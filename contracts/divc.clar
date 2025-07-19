@@ -247,3 +247,21 @@
 (define-read-only (get-service-requirements (service-id (string-ascii 50)))
  (ok (map-get? verification-requirements { service-id: service-id }))
 )
+
+
+
+
+;; Get provider information
+(define-read-only (get-provider-info (provider-id (string-ascii 50)))
+ (ok (map-get? identity-providers { provider-id: provider-id }))
+)
+
+
+;; Transfer contract ownership (only current owner)
+(define-public (transfer-ownership (new-owner principal))
+ (begin
+   (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-NOT-AUTHORIZED)
+   (var-set contract-owner new-owner)
+   (ok true)
+ )
+)
