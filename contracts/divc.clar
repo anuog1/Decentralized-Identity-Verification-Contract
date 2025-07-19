@@ -102,3 +102,116 @@
    (ok true)
  )
 )
+;; Update provider status (only contract owner)
+(define-public (update-provider-status (provider-id (string-ascii 50)) (active bool))
+ (begin
+   (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-NOT-AUTHORIZED)
+   (asserts! (is-some (map-get? identity-providers { provider-id: provider-id })) ERR-INVALID-PROVIDER)
+  
+   (let ((provider (unwrap-panic (map-get? identity-providers { provider-id: provider-id }))))
+     (map-set identity-providers
+       { provider-id: provider-id }
+       {
+         name: (get name provider),
+         trust-score: (get trust-score provider),
+         active: active
+       }
+     )
+   )
+   (ok true)
+ )
+)
+
+
+;; Verify a user's identity (called by authorized provider)
+;; In a real implementation, provider would be authenticated via multi-sig or other mechanism
+(define-public (verify-user (user principal) (provider-id (string-ascii 50)) (verification-hash (buff 32)) (expiration-blocks uint))
+ (let
+   (
+     (provider (unwrap! (map-get? identity-providers { provider-id: provider-id }) ERR-INVALID-PROVIDER))
+     (user-identity (unwrap! (map-get? user-identities { user: user }) ERR-NOT-REGISTERED))
+     (current-block-height block-height)
+     (expiration-timestamp (+ current-block-height expiration-blocks))
+   )
+  
+   ;; Check provider is active
+   (asserts! (get active provider) ERR-INVALID-PROVIDER)
+  
+;; Update user's identity verification
+   (map-set user-identities
+     { user: user }
+     {
+       registered: true,
+       verification-status: true,
+       trust-level: (get trust-score provider),
+       provider-id: provider-id,
+       verification-hash: verification-hash,
+       verification-timestamp: current-block-height,
+       expiration-timestamp: expiration-timestamp
+     }
+   )
+   (ok true)
+ )
+)
+;; Set verification requirements for a service/application (only contract owner)
+(define-public (set-verification-requirements
+                (service-id (string-ascii 50))
+                (required-trust-level uint)
+                (required-providers (list 10 (string-ascii 50)))
+                (kyc-required bool)
+                (aml-required bool))
+ (begin
+   (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-NOT-AUTHORIZED)
+   (asserts! (and (>= required-trust-level TRUST-LEVEL-1) (<= required-trust-level TRUST-LEVEL-5)) ERR-INVALID-TRUST-LEVEL)
+  
+   (map-set verification-requirements
+     { service-id: service-id }
+     {
+       required-trust-level: required-trust-level,
+       required-providers: required-providers,
+       kyc-required: kyc-required,
+       aml-required: aml-required
+     }
+   )
+   (ok true)
+ )
+
+
+   )
+
+
+;; Check if a user meets verification requirements for a service
+(define-public (check-verification (user principal) (service-id (string-ascii 50)))
+ (let
+   (
+     (user-identity (unwrap! (map-get? user-identities { user: user }) ERR-NOT-REGISTERED))
+     (requirements (unwrap! (map-get? verification-requirements { service-id: service-id }) (err u106)))
+     (current-block-height block-height)
+   )
+  
+   ;; Check verification status
+   (asserts! (get verification-status user-identity) (err u107))
+  
+   ;; Check if verification is expired
+   (asserts! (<= current-block-height (get expiration-timestamp user-identity)) ERR-EXPIRED-VERIFICATION)
+  
+   ;; Check if user meets trust level
+   (asserts! (>= (get trust-level user-identity) (get required-trust-level requirements)) (err u108))
+  
+   ;; Check if provider is in the required list (if non-empty)
+   (if (> (len (get required-providers requirements)) u0)
+       (asserts! (is-some (index-of (get required-providers requirements) (get provider-id user-identity))) (err u109))
+       true
+   )
+      
+   (ok true)
+ )
+)
+
+
+;; Read-only functions
+
+
+;; Get user verification status
+(define-read-only (get-user-verification-status (user principal))
+ (let ((user-identity (map-get? user-identities { user: user })))
