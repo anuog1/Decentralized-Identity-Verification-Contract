@@ -87,3 +87,18 @@
 
 ;; Add a new identity provider (only contract owner)
 (define-public (add-provider (provider-id (string-ascii 50)) (name (string-ascii 50)) (trust-score uint))
+ (begin
+   (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-NOT-AUTHORIZED)
+   (asserts! (and (>= trust-score TRUST-LEVEL-1) (<= trust-score TRUST-LEVEL-5)) ERR-INVALID-TRUST-LEVEL)
+  
+   (map-set identity-providers
+     { provider-id: provider-id }
+     {
+       name: name,
+       trust-score: trust-score,
+       active: true
+     }
+   )
+   (ok true)
+ )
+)
