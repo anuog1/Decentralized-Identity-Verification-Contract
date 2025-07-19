@@ -215,3 +215,35 @@
 ;; Get user verification status
 (define-read-only (get-user-verification-status (user principal))
  (let ((user-identity (map-get? user-identities { user: user })))
+
+
+   (if (is-some user-identity)
+       (let ((identity (unwrap-panic user-identity)))
+         (if (and
+               (get verification-status identity)
+               (<= block-height (get expiration-timestamp identity))
+             )
+             (ok {
+               verified: true,
+               trust-level: (get trust-level identity),
+               provider: (get provider-id identity),
+               expiration: (get expiration-timestamp identity)
+             })
+             (ok {
+               verified: false,
+               trust-level: u0,
+               provider: "",
+               expiration: u0
+             })
+         )
+       )
+       (err ERR-NOT-REGISTERED)
+   )
+ )
+)
+
+
+;; Get service requirements
+(define-read-only (get-service-requirements (service-id (string-ascii 50)))
+ (ok (map-get? verification-requirements { service-id: service-id }))
+)
